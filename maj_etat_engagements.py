@@ -16,6 +16,7 @@ Usage :
 Par défaut : modele = ETAT_D_ENGAGEMENTS.xlsx,
              sortie = ETAT_D_ENGAGEMENTS - MAJ <date>.xlsx
 """
+import re
 import sys
 import warnings
 from copy import copy
@@ -31,6 +32,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 ONGLETS_SOURCES = ["Parametres", "ENGAGEMENTS 2026", "lignes"]
 ONGLET_ENGAGEMENTS = "ENGAGEMENTS 2026"
+ONGLET_SUIVI = "Données Suivi"
 LIGNES_FORMULES_SUIVI = 3000  # plage couverte par l'onglet "Données Suivi"
 
 
@@ -131,6 +133,29 @@ def copier_onglet(src, dst, decalage=0, entetes=()):
         dst.add_table(nt)
 
 
+_REF_CELLULE_ENG = re.compile(
+    r"'ENGAGEMENTS 2026'!\$?([A-Z]{1,3})\$?\d+(?![\d:])")
+
+
+def ancrer_donnees_suivi(ws_suivi):
+    """Remplace dans « Données Suivi » les références cellule à cellule
+    ('ENGAGEMENTS 2026'!C2) par INDEX('ENGAGEMENTS 2026'!$C:$C,ROW()).
+    La ligne N de Données Suivi lit ainsi toujours la ligne N des engagements,
+    même quand une ligne est insérée dans Excel (sinon Excel décale les
+    références et la ligne insérée n'est plus comptée). Sans effet si déjà fait."""
+    nb = 0
+    for row in ws_suivi.iter_rows(min_row=2):
+        for c in row:
+            v = c.value
+            if isinstance(v, str) and v.startswith("=") and "'ENGAGEMENTS 2026'!" in v:
+                nv = _REF_CELLULE_ENG.sub(
+                    lambda m: f"INDEX('ENGAGEMENTS 2026'!${m.group(1)}:${m.group(1)},ROW())", v)
+                if nv != v:
+                    c.value = nv
+                    nb += 1
+    return nb
+
+
 def decaler_references_classeur(wb, onglet, n):
     """Décale de n colonnes toutes les références vers `onglet` situées dans
     les autres onglets (formules) et dans les noms définis."""
@@ -227,6 +252,8 @@ def main():
     if not modele_a_etat:
         nb_refs = decaler_references_classeur(wb, ONGLET_ENGAGEMENTS, 1)
 
+    nb_ancrees = ancrer_donnees_suivi(wb[ONGLET_SUIVI])
+
     ws = wb[ONGLET_ENGAGEMENTS]
     fin = derniere_ligne(ws, col=3)
     if fin > LIGNES_FORMULES_SUIVI:
@@ -249,6 +276,8 @@ def main():
     print(f"Volets figés: {ws.freeze_panes}")
     if nb_refs:
         print(f"Colonne ÉTAT: insérée en A, {nb_refs} formule(s)/nom(s) du modèle décalé(s)")
+    if nb_ancrees:
+        print(f"Données Suivi: {nb_ancrees} formule(s) ancrée(s) ligne à ligne (INDEX/ROW)")
     if nb_filtres or nb_masquees:
         print(f"Filtres     : {nb_filtres} filtre(s) retiré(s), "
               f"{nb_masquees} ligne(s) réaffichée(s)")
