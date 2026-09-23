@@ -18,7 +18,7 @@ from openpyxl.formatting.rule import FormulaRule, Rule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.differential import DifferentialStyle
 from openpyxl.utils import column_index_from_string, get_column_letter
-from openpyxl.worksheet.table import TableStyleInfo
+from openpyxl.worksheet.table import TableFormula, TableStyleInfo
 
 MARINE = "1F4E78"
 TEXTE = "262626"
@@ -194,8 +194,12 @@ def appliquer_style(ws, fin):
             ws.conditional_formatting.add(
                 cible, Rule(type="expression", dxf=dxf, formula=[condition]))
 
-    # Tableau Excel : style neutre, sans bandes (la couleur vient du statut)
+    # Tableau Excel : style neutre, sans bandes (la couleur vient du statut).
+    # La colonne ÉTAT est déclarée « colonne calculée » : Excel recopie
+    # automatiquement la formule de l'icône sur chaque nouvelle ligne.
     for t in ws.tables.values():
+        t.tableColumns[0].calculatedColumnFormula = TableFormula(
+            attr_text=formule_icone(2)[1:])
         t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False,
                                           showColumnStripes=False,
                                           showFirstColumn=False, showLastColumn=False)
