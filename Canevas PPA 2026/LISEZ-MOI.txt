@@ -1,0 +1,57 @@
+CANEVAS PPA 2026 - MODE D'EMPLOI
+================================
+
+CONTENU DU DOSSIER
+------------------
+  Canevas PPA 2026 - <DIRECTION>.xlsx   22 canevas vierges, pre-remplis et verrouilles,
+                                        un par direction. C'est ce qu'on envoie aux directions.
+  Retours\                              Dossier ou DEPOSER les fichiers renvoyes par les directions.
+  Consolidation PPA 2026.xlsx           Resultat de la consolidation (regenere a chaque execution).
+  generer_canevas_ppa.py                Script qui (re)genere les canevas vierges.
+  consolider_ppa.py                     Script qui consolide les retours.
+
+PYTHON A UTILISER (machine HP)
+-----------------------------
+  "C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe"
+
+
+ETAPE 1 - DISTRIBUER
+--------------------
+Envoyer a chaque direction SON fichier "Canevas PPA 2026 - <DIRECTION>.xlsx".
+Le nom de la direction, l'annee (2026) et le type de chaque onglet sont deja remplis et verrouilles.
+Onglets de saisie : Marches / Bons de commande / Contrats-Conventions (3 onglets ;
+l'onglet "Contrats prod" n'est genere que pour les directions de production listees
+dans DIRECTIONS_AVEC_PROD en tete de generer_canevas_ppa.py).
+Chaque onglet : ligne 3 = en-tete, ligne 4 = EXEMPLE (jaune, a ne pas toucher),
+saisie a partir de la ligne 5. Bulle d'aide au clic sur chaque cellule.
+Colonne "Statut ligne" a droite : coche = ligne complete, triangle = incomplet.
+Consigne aux directions : remplir les onglets, verifier que l'onglet "Controle" affiche
+"PRET A ENVOYER", NE PAS renommer le fichier, NE PAS modifier la structure.
+Mot de passe de protection (deverrouillage exceptionnel) : PPA2026
+
+ETAPE 2 - COLLECTER
+-------------------
+Deposer tous les fichiers recus dans le sous-dossier  Retours\
+(garder le nom "Canevas PPA 2026 - <DIRECTION>.xlsx").
+
+ETAPE 3 - CONSOLIDER
+--------------------
+Double-cliquer sur ACTUALISER CONSOLIDATION.bat
+  (ou en ligne de commande :)
+  "C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe" "consolider_ppa.py"
+
+Le fichier "Consolidation PPA 2026.xlsx" est recree. Il contient :
+  - Suivi des retours : qui a renvoye / pas renvoye, nb lignes, total budget, statut
+  - PPA Consolide     : toutes les lignes de toutes les directions, a plat (1 ligne = 1 besoin)
+  - Synthese          : budget par Direction / Nature / Nature budget / Trimestre / Type / Mode (+ graphiques)
+  - Anomalies         : lignes ou un champ obligatoire manque ou un montant n'est pas numerique
+
+On peut relancer la consolidation autant de fois qu'on veut, au fur et a mesure des retours.
+
+
+REGENERER LES CANEVAS VIERGES (si besoin)
+-----------------------------------------
+  python generer_canevas_ppa.py --all              -> les 22
+  python generer_canevas_ppa.py --dir DRH DACG     -> une liste precise
+Pour modifier la liste des directions ou les listes deroulantes : editer le haut de
+generer_canevas_ppa.py (DIRECTIONS_22 et REFERENTIELS).
