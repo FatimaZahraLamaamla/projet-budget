@@ -9,6 +9,7 @@ Mise en forme unifiée de l'onglet "ENGAGEMENTS 2026".
 - suppression des surlignages manuels et des règles cassées (#REF!).
 """
 import math
+from datetime import datetime
 
 from openpyxl.formatting.rule import FormulaRule, Rule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -109,7 +110,17 @@ def appliquer_style(ws, fin):
                 c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             if typ in FORMATS:
                 c.number_format = FORMATS[typ]
-            elif c.number_format != "General" and not isinstance(c.value, (int, float)):
+            elif c.is_date and isinstance(c.value, datetime):
+                # Nombre saisi dans une colonne de code : une vraie date reste
+                # une date, un petit nombre (année, n°) mal formaté en date
+                # redevient un nombre (ex. 2022 affiché « 14/07/1905 »).
+                if c.value.year < 1910:
+                    c.number_format = "General"
+                    c.value = (c.value - datetime(1899, 12, 30)).days
+                else:
+                    c.number_format = FORMATS["d"]
+            elif (c.number_format != "General" and not c.is_date
+                  and not isinstance(c.value, (int, float))):
                 c.number_format = "General"
 
     # Mise en forme conditionnelle : on repart de zéro
