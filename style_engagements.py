@@ -1,7 +1,8 @@
 """
 Mise en forme unifiée de l'onglet "ENGAGEMENTS 2026".
 
-- une seule police (Calibri 10), gras réservé aux colonnes clés ;
+- une seule police (Calibri 11, OBJET en 12), gras pour les colonnes clés
+  (direction, référence, objet, montants, statut) ;
 - en-tête bleu marine #1F4E78, groupes de colonnes séparés ;
 - alignements et formats homogènes par type de colonne (texte, code, date, montant) ;
 - couleur de ligne selon le STATUT D'ENGAGEMENT (règles recréées proprement,
@@ -25,20 +26,24 @@ LIGNES_STYLE = 3000  # les règles de couleur couvrent aussi les lignes à venir
 # Type de chaque colonne : c = code/centré, t = texte long, m = montant,
 # d = date, p = pourcentage, n = nombre court
 COLONNES = {
-    "A": ("c", 11), "B": ("c", 14), "C": ("c", 23), "D": ("c", 10), "E": ("c", 7),
-    "F": ("t", 60), "G": ("c", 14), "H": ("c", 17), "I": ("c", 18),
+    "A": ("c", 13), "B": ("c", 14), "C": ("c", 23), "D": ("c", 10), "E": ("c", 7),
+    "F": ("t", 66), "G": ("c", 14), "H": ("c", 17), "I": ("c", 18),
     "J": ("c", 14), "K": ("c", 18), "L": ("t", 24), "M": ("t", 34),
-    "N": ("m", 16), "O": ("m", 16), "P": ("m", 16), "Q": ("c", 17),
-    "R": ("d", 11), "S": ("d", 11), "T": ("t", 26), "U": ("c", 13),
+    "N": ("m", 17), "O": ("m", 17), "P": ("m", 17), "Q": ("c", 17),
+    "R": ("d", 11), "S": ("d", 11), "T": ("t", 26), "U": ("c", 15),
     "V": ("d", 11), "W": ("d", 11), "X": ("d", 11),
-    "Y": ("m", 16), "Z": ("m", 15), "AA": ("m", 16), "AB": ("m", 15),
-    "AC": ("m", 16), "AD": ("m", 17), "AE": ("c", 20),
-    "AF": ("t", 20), "AG": ("m", 14), "AH": ("m", 15), "AI": ("m", 15),
-    "AJ": ("m", 15), "AK": ("p", 11), "AL": ("p", 11), "AM": ("t", 50),
+    "Y": ("m", 17), "Z": ("m", 17), "AA": ("m", 17), "AB": ("m", 17),
+    "AC": ("m", 17), "AD": ("m", 18), "AE": ("c", 20),
+    "AF": ("t", 20), "AG": ("m", 17), "AH": ("m", 17), "AI": ("m", 17),
+    "AJ": ("m", 17), "AK": ("p", 11), "AL": ("p", 11), "AM": ("t", 50),
 }
 
-# Colonnes en gras : identification du dossier, montant retenu, statut
-GRAS = {"B", "C", "AD", "AE"}
+# Tailles de police : 11 partout, 12 pour l'OBJET (colonne la plus lue)
+TAILLE = 11
+TAILLE_OBJET = 12
+
+# Colonnes en gras : direction, référence, objet, statut et tous les montants
+GRAS = {"B", "C", "F", "AE"} | {col for col, (typ, _) in COLONNES.items() if typ == "m"}
 
 # Premières colonnes de chaque groupe : un trait plus marqué les sépare
 DEBUT_GROUPE = {"G", "J", "N", "R", "T", "Y", "AE", "AF", "AM"}
@@ -59,18 +64,25 @@ STATUTS = {
 }
 
 
+def _taille(col):
+    return TAILLE_OBJET if col == "F" else TAILLE
+
+
 def _hauteur(ws, r):
     """Hauteur de ligne suffisante pour les colonnes de texte long."""
-    lignes = 1
+    hauteur = 32
     for col, (typ, larg) in COLONNES.items():
         if typ != "t":
             continue
         v = ws[f"{col}{r}"].value
         if v:
-            txt = str(v)
-            n = sum(math.ceil(max(len(p), 1) / (larg * 1.15)) for p in txt.split("\n"))
-            lignes = max(lignes, n)
-    return max(30, min(lignes, 5) * 13.5 + 4)
+            taille = _taille(col)
+            # caractères par ligne : ~1 par unité de largeur à 11 pt, moins
+            # en gras ou en plus grand
+            par_ligne = larg * 11 / taille * (0.9 if col in GRAS else 1.0)
+            n = sum(math.ceil(max(len(p), 1) / par_ligne) for p in str(v).split("\n"))
+            hauteur = max(hauteur, min(n, 6) * taille * 1.35 + 6)
+    return hauteur
 
 
 def appliquer_style(ws, fin):
@@ -82,10 +94,10 @@ def appliquer_style(ws, fin):
     aucun = PatternFill(fill_type=None)
 
     # En-tête
-    ws.row_dimensions[1].height = 45
+    ws.row_dimensions[1].height = 48
     for col, (typ, larg) in COLONNES.items():
         c = ws[f"{col}1"]
-        c.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+        c.font = Font(name="Calibri", size=TAILLE, bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor=MARINE)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         c.border = Border(left=sep_entete if col in DEBUT_GROUPE else blanc,
@@ -98,7 +110,7 @@ def appliquer_style(ws, fin):
         ws.row_dimensions[r].height = _hauteur(ws, r)
         for col, (typ, _) in COLONNES.items():
             c = ws[f"{col}{r}"]
-            c.font = Font(name="Calibri", size=10, bold=col in GRAS, color=TEXTE)
+            c.font = Font(name="Calibri", size=_taille(col), bold=col in GRAS, color=TEXTE)
             c.fill = aucun
             c.border = Border(left=sep if col in DEBUT_GROUPE else fin_grille,
                               right=fin_grille, top=fin_grille, bottom=fin_grille)
@@ -141,5 +153,5 @@ def appliquer_style(ws, fin):
                                           showColumnStripes=False,
                                           showFirstColumn=False, showLastColumn=False)
 
-    ws.sheet_view.zoomScale = 90
+    ws.sheet_view.zoomScale = 100
     ws.sheet_view.showGridLines = False
