@@ -6,6 +6,7 @@ Les onglets sources (ENGAGEMENTS 2026, Parametres, lignes) sont remplacés
 par ceux du fichier source ; les onglets de tableaux de bord (Tableau de Bord,
 Filtre Interactif, Tableau de Bord Suivi, Données Suivi, PPM 2026) sont
 conservés tels quels et se recalculent à l'ouverture dans Excel.
+L'onglet ENGAGEMENTS 2026 est remis en forme (voir style_engagements.py).
 
 Usage :
     python maj_etat_engagements.py <fichier_source.xlsx> [modele.xlsx] [sortie.xlsx]
@@ -20,6 +21,8 @@ from datetime import date
 
 import openpyxl
 from openpyxl.worksheet.table import Table
+
+from style_engagements import appliquer_style
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -167,6 +170,7 @@ def main():
                  f"({LIGNES_FORMULES_SUIVI}), à étendre.")
     ancien, nouveau = etendre_table(ws, fin)
     nb_filtres, nb_masquees = retirer_filtres(ws)
+    appliquer_style(ws, fin)
 
     wb.active = 0
     wb.calculation.fullCalcOnLoad = True  # recalcul complet à l'ouverture
