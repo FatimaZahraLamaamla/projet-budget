@@ -74,7 +74,12 @@ def copier_onglet(src, dst):
     for img in getattr(src, "_images", []):
         dst.add_image(img)
 
-    dst.freeze_panes = src.freeze_panes
+    # Volets figés : on reprend le découpage réel (xSplit/ySplit) et non la
+    # position de défilement (topLeftCell), qu'openpyxl confond avec le figeage.
+    pane = src.sheet_view.pane
+    if pane is not None and pane.state == "frozen":
+        dst.freeze_panes = dst.cell(row=int(pane.ySplit or 0) + 1,
+                                    column=int(pane.xSplit or 0) + 1)
     dst.auto_filter.ref = src.auto_filter.ref
     dst.sheet_properties.tabColor = src.sheet_properties.tabColor
     dst.sheet_view.zoomScale = src.sheet_view.zoomScale
@@ -90,6 +95,27 @@ def copier_onglet(src, dst):
         for col_src, col_dst in zip(t.tableColumns, nt.tableColumns):
             col_dst.name = col_src.name
         dst.add_table(nt)
+
+
+def retirer_filtres(ws):
+    """Supprime les filtres enregistrés dans le fichier source et réaffiche
+    les lignes qu'ils masquaient : openpyxl ne réapplique pas les filtres,
+    les lignes ajoutées resteraient visibles et les autres masquées."""
+    nb = 0
+    for t in ws.tables.values():
+        if t.autoFilter is not None:
+            nb += len(t.autoFilter.filterColumn)
+            t.autoFilter.filterColumn = []
+            t.autoFilter.sortState = None
+    if ws.auto_filter.ref:
+        nb += len(ws.auto_filter.filterColumn)
+        ws.auto_filter.filterColumn = []
+    masquees = 0
+    for dim in ws.row_dimensions.values():
+        if dim.hidden:
+            dim.hidden = False
+            masquees += 1
+    return nb, masquees
 
 
 def etendre_table(ws, fin):
@@ -140,6 +166,7 @@ def main():
         sys.exit(f"{fin} lignes : dépasse la plage de 'Données Suivi' "
                  f"({LIGNES_FORMULES_SUIVI}), à étendre.")
     ancien, nouveau = etendre_table(ws, fin)
+    nb_filtres, nb_masquees = retirer_filtres(ws)
 
     wb.active = 0
     wb.calculation.fullCalcOnLoad = True  # recalcul complet à l'ouverture
@@ -151,6 +178,10 @@ def main():
     print(f"Lignes      : {fin - 1} dossiers (jusqu'à la ligne {fin})")
     if ancien:
         print(f"Tableau     : {ancien} -> {nouveau}")
+    print(f"Volets figés: {ws.freeze_panes}")
+    if nb_filtres or nb_masquees:
+        print(f"Filtres     : {nb_filtres} filtre(s) retiré(s), "
+              f"{nb_masquees} ligne(s) réaffichée(s)")
 
 
 if __name__ == "__main__":
