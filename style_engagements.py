@@ -1,12 +1,12 @@
 """
 Mise en forme unifiée de l'onglet "ENGAGEMENTS 2026".
 
-- une seule police (Calibri 11, OBJET en 12), gras pour les colonnes clés
+- une seule police (Calibri 11, colonnes en gras en 10), gras pour les colonnes clés
   (direction, référence, objet, lignes budgétaires, montants, statut) ;
 - en-tête bleu marine #1F4E78, groupes de colonnes séparés ;
 - alignements et formats homogènes par type de colonne (texte, code, date, montant) ;
-- couleur de ligne selon le STATUT D'ENGAGEMENT (règles recréées proprement,
-  couvrant aussi les lignes futures) ;
+- couleur de ligne et icône selon le STATUT D'ENGAGEMENT (règles recréées
+  proprement, couvrant aussi les lignes futures) ;
 - suppression des surlignages manuels et des règles cassées (#REF!).
 """
 import math
@@ -15,6 +15,7 @@ from datetime import datetime
 from openpyxl.formatting.rule import FormulaRule, Rule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.styles.numbers import NumberFormat
 from openpyxl.worksheet.table import TableStyleInfo
 
 MARINE = "1F4E78"
@@ -33,14 +34,16 @@ COLONNES = {
     "R": ("d", 11), "S": ("d", 11), "T": ("t", 26), "U": ("c", 15),
     "V": ("d", 11), "W": ("d", 11), "X": ("d", 11),
     "Y": ("m", 17), "Z": ("m", 17), "AA": ("m", 17), "AB": ("m", 17),
-    "AC": ("m", 17), "AD": ("m", 18), "AE": ("c", 20),
+    "AC": ("m", 17), "AD": ("m", 18), "AE": ("c", 24),
     "AF": ("t", 20), "AG": ("m", 17), "AH": ("m", 17), "AI": ("m", 17),
     "AJ": ("m", 17), "AK": ("p", 11), "AL": ("p", 11), "AM": ("t", 50),
 }
 
-# Tailles de police : 11 partout, 12 pour l'OBJET (colonne la plus lue)
+# Tailles de police : 11 pour le texte normal ; les colonnes en gras sont
+# un cran plus petites pour ne pas écraser la lecture (OBJET reste à 11)
 TAILLE = 11
-TAILLE_OBJET = 12
+TAILLE_GRAS = 10
+TAILLE_OBJET = 11
 
 # Colonnes en gras : direction, référence, objet, lignes budgétaires, statut
 # et tous les montants
@@ -55,18 +58,25 @@ FORMATS = {
     "p": "0.0%",
 }
 
-# Couleurs par statut : fond de ligne pastel + texte du statut
+# Par statut : fond de ligne pastel, couleur du texte du statut et icône
+# affichée devant le statut. L'icône suit l'avancement du dossier :
+# ◔ préengagement en cours → ◑ préengagé → ◕ engagement en cours → ✔ engagé.
+# Elle est ajoutée par un format de nombre conditionnel : la cellule contient
+# toujours le texte seul, les formules et tableaux de bord ne changent pas.
 STATUTS = {
-    "ENGAGE": ("E2EFDA", "006100"),
-    "PREENGAGE": ("FFF2CC", "9C6500"),
-    "EN COURS D'ENGAGEMENT": ("DDEBF7", "1F4E79"),
-    "EN COURS DE PREENGAGEMENT": ("E4DFEC", "5F497A"),
-    "NON ENGAGE": ("FCE4E4", "9C0006"),
+    "ENGAGE": ("E2EFDA", "006100", "✔"),
+    "EN COURS D'ENGAGEMENT": ("DDEBF7", "1F4E79", "◕"),
+    "PREENGAGE": ("FFF2CC", "9C6500", "◑"),
+    "EN COURS DE PREENGAGEMENT": ("E4DFEC", "5F497A", "◔"),
+    "NON ENGAGE": ("FCE4E4", "9C0006", "✖"),
 }
+ID_FORMAT_ICONES = 400  # identifiants hors de la plage utilisée par les cellules
 
 
 def _taille(col):
-    return TAILLE_OBJET if col == "F" else TAILLE
+    if col == "F":
+        return TAILLE_OBJET
+    return TAILLE_GRAS if col in GRAS else TAILLE
 
 
 def _hauteur(ws, r):
@@ -139,12 +149,15 @@ def appliquer_style(ws, fin):
     # Mise en forme conditionnelle : on repart de zéro
     ws.conditional_formatting._cf_rules.clear()
     plage = f"A2:{DERNIERE_COL}{LIGNES_STYLE}"
-    for statut, (fond, texte) in STATUTS.items():
+    for i, (statut, (fond, texte, icone)) in enumerate(STATUTS.items()):
         s = statut.replace('"', '""')
         ws.conditional_formatting.add(plage, FormulaRule(
             formula=[f'$AE2="{s}"'],
             fill=PatternFill("solid", fgColor=fond, bgColor=fond)))
-        dxf = DifferentialStyle(font=Font(bold=True, color=texte))
+        dxf = DifferentialStyle(
+            font=Font(bold=True, color=texte),
+            numFmt=NumberFormat(numFmtId=ID_FORMAT_ICONES + i,
+                                formatCode=f'"{icone}  "@'))
         regle = Rule(type="expression", dxf=dxf, formula=[f'$AE2="{s}"'])
         ws.conditional_formatting.add(f"AE2:AE{LIGNES_STYLE}", regle)
 
