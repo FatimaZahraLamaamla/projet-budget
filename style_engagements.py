@@ -2,7 +2,7 @@
 Mise en forme unifiée de l'onglet "ENGAGEMENTS 2026".
 
 - une seule police (Calibri 11, OBJET en 12), gras pour les colonnes clés
-  (direction, référence, objet, montants, statut) ;
+  (direction, référence, objet, lignes budgétaires, montants, statut) ;
 - en-tête bleu marine #1F4E78, groupes de colonnes séparés ;
 - alignements et formats homogènes par type de colonne (texte, code, date, montant) ;
 - couleur de ligne selon le STATUT D'ENGAGEMENT (règles recréées proprement,
@@ -42,8 +42,9 @@ COLONNES = {
 TAILLE = 11
 TAILLE_OBJET = 12
 
-# Colonnes en gras : direction, référence, objet, statut et tous les montants
-GRAS = {"B", "C", "F", "AE"} | {col for col, (typ, _) in COLONNES.items() if typ == "m"}
+# Colonnes en gras : direction, référence, objet, lignes budgétaires, statut
+# et tous les montants
+GRAS = {"B", "C", "F", "M", "AE"} | {col for col, (typ, _) in COLONNES.items() if typ == "m"}
 
 # Premières colonnes de chaque groupe : un trait plus marqué les sépare
 DEBUT_GROUPE = {"G", "J", "N", "R", "T", "Y", "AE", "AF", "AM"}
