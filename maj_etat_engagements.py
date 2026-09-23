@@ -6,7 +6,9 @@ Les onglets sources (ENGAGEMENTS 2026, Parametres, lignes) sont remplacés
 par ceux du fichier source ; les onglets de tableaux de bord (Tableau de Bord,
 Filtre Interactif, Tableau de Bord Suivi, Données Suivi, PPM 2026) sont
 conservés tels quels et se recalculent à l'ouverture dans Excel.
-L'onglet ENGAGEMENTS 2026 est remis en forme (voir style_engagements.py).
+L'onglet ENGAGEMENTS 2026 reçoit en colonne A une icône d'état (les colonnes
+source sont décalées d'un cran, les formules des tableaux de bord aussi) et
+est remis en forme (voir style_engagements.py).
 
 Usage :
     python maj_etat_engagements.py <fichier_source.xlsx> [modele.xlsx] [sortie.xlsx]
@@ -22,7 +24,8 @@ from datetime import date
 import openpyxl
 from openpyxl.worksheet.table import Table
 
-from style_engagements import appliquer_style
+from decalage_colonnes import decaler_formule, decaler_reference
+from style_engagements import ENTETE_ETAT, appliquer_style
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -31,8 +34,8 @@ ONGLET_ENGAGEMENTS = "ENGAGEMENTS 2026"
 LIGNES_FORMULES_SUIVI = 3000  # plage couverte par l'onglet "Données Suivi"
 
 
-def derniere_ligne(ws, col=2):
-    """Dernière ligne dont la colonne DIRECTION (B) est renseignée."""
+def derniere_ligne(ws, col):
+    """Dernière ligne dont la colonne DIRECTION est renseignée."""
     fin = 1
     for r, (v,) in enumerate(
             ws.iter_rows(min_row=2, min_col=col, max_col=col, values_only=True), start=2):
@@ -41,10 +44,17 @@ def derniere_ligne(ws, col=2):
     return fin
 
 
-def copier_onglet(src, dst):
+def copier_onglet(src, dst, decalage=0, entetes=()):
+    """Copie un onglet d'un classeur à l'autre. Avec decalage=n, les colonnes
+    sont décalées de n vers la droite (formules, validations, largeurs,
+    tableau et volets figés suivent) pour libérer les n premières colonnes,
+    dont les en-têtes sont donnés par `entetes`."""
+    def dec(formule):
+        return decaler_formule(formule, dst.title, dst.title, decalage) if decalage else formule
+
     for row in src.iter_rows():
         for c in row:
-            d = dst.cell(row=c.row, column=c.column, value=c.value)
+            d = dst.cell(row=c.row, column=c.column + decalage, value=dec(c.value))
             if c.has_style:
                 d.font = copy(c.font)
                 d.fill = copy(c.fill)
@@ -58,9 +68,9 @@ def copier_onglet(src, dst):
                 d.comment = copy(c.comment)
 
     for key, dim in src.column_dimensions.items():
-        dd = dst.column_dimensions[key]
+        dd = dst.column_dimensions[decaler_reference(f"{key}1", decalage)[:-1]]
         dd.width, dd.hidden = dim.width, dim.hidden
-        dd.min, dd.max = dim.min, dim.max
+        dd.min, dd.max = dim.min + decalage, dim.max + decalage
         dd.outlineLevel = dim.outlineLevel
     for key, dim in src.row_dimensions.items():
         dd = dst.row_dimensions[key]
@@ -68,12 +78,20 @@ def copier_onglet(src, dst):
         dd.outlineLevel = dim.outlineLevel
 
     for rng in src.merged_cells.ranges:
-        dst.merge_cells(str(rng))
-    for cf in src.conditional_formatting:
-        for rule in cf.rules:
-            dst.conditional_formatting.add(str(cf.sqref), rule)
+        dst.merge_cells(decaler_reference(str(rng), decalage))
+    if not decalage:  # avec décalage, la mise en forme conditionnelle est refaite par le style
+        for cf in src.conditional_formatting:
+            for rule in cf.rules:
+                dst.conditional_formatting.add(str(cf.sqref), rule)
     for dv in src.data_validations.dataValidation:
-        dst.add_data_validation(copy(dv))
+        ndv = copy(dv)
+        if decalage:
+            ndv.sqref = decaler_reference(dv.sqref, decalage)
+            for attr in ("formula1", "formula2"):
+                f = getattr(dv, attr)
+                if f:
+                    setattr(ndv, attr, dec("=" + f)[1:])
+        dst.add_data_validation(ndv)
     for img in getattr(src, "_images", []):
         dst.add_image(img)
 
@@ -82,8 +100,9 @@ def copier_onglet(src, dst):
     pane = src.sheet_view.pane
     if pane is not None and pane.state == "frozen":
         dst.freeze_panes = dst.cell(row=int(pane.ySplit or 0) + 1,
-                                    column=int(pane.xSplit or 0) + 1)
-    dst.auto_filter.ref = src.auto_filter.ref
+                                    column=int(pane.xSplit or 0) + 1 + decalage)
+    if src.auto_filter.ref:
+        dst.auto_filter.ref = decaler_reference(src.auto_filter.ref, decalage)
     dst.sheet_properties.tabColor = src.sheet_properties.tabColor
     dst.sheet_view.zoomScale = src.sheet_view.zoomScale
     dst.sheet_view.showGridLines = src.sheet_view.showGridLines
@@ -91,13 +110,47 @@ def copier_onglet(src, dst):
     dst.page_setup.paperSize = src.page_setup.paperSize
 
     for t in src.tables.values():
-        nt = Table(displayName=t.displayName, ref=t.ref)
+        noms = [c.name for c in t.tableColumns]
+        ref = t.ref
+        if decalage:
+            # le tableau englobe les colonnes libérées en tête
+            debut, fin = decaler_reference(t.ref, decalage).split(":")
+            ref = f"A{debut.lstrip('$ABCDEFGHIJKLMNOPQRSTUVWXYZ')}:{fin}"
+            noms = list(entetes) + noms
+            for i, nom in enumerate(entetes, start=1):
+                dst.cell(row=int(debut.lstrip("$ABCDEFGHIJKLMNOPQRSTUVWXYZ")), column=i, value=nom)
+        nt = Table(displayName=t.displayName, ref=ref)
         nt.tableStyleInfo = copy(t.tableStyleInfo)
         nt.autoFilter = copy(t.autoFilter)
+        if nt.autoFilter is not None:
+            nt.autoFilter.ref = ref
+            nt.autoFilter.filterColumn = []
         nt._initialise_columns()
-        for col_src, col_dst in zip(t.tableColumns, nt.tableColumns):
-            col_dst.name = col_src.name
+        for nom, col_dst in zip(noms, nt.tableColumns):
+            col_dst.name = nom
         dst.add_table(nt)
+
+
+def decaler_references_classeur(wb, onglet, n):
+    """Décale de n colonnes toutes les références vers `onglet` situées dans
+    les autres onglets (formules) et dans les noms définis."""
+    nb = 0
+    for ws in wb.worksheets:
+        if ws.title == onglet:
+            continue
+        for row in ws.iter_rows():
+            for c in row:
+                v = c.value
+                if isinstance(v, str) and v.startswith("=") and onglet in v:
+                    nv = decaler_formule(v, onglet, ws.title, n)
+                    if nv != v:
+                        c.value = nv
+                        nb += 1
+    for nom, dn in wb.defined_names.items():
+        if dn.attr_text and onglet in dn.attr_text:
+            dn.attr_text = decaler_formule("=" + dn.attr_text, onglet, "", n)[1:]
+            nb += 1
+    return nb
 
 
 def retirer_filtres(ws):
@@ -150,21 +203,32 @@ def main():
     if manquants:
         sys.exit(f"Onglets absents du fichier source : {manquants}")
 
+    # Colonne ÉTAT (icônes) : déjà présente dans le modèle et/ou la source ?
+    modele_a_etat = wb[ONGLET_ENGAGEMENTS]["A1"].value == ENTETE_ETAT
+    source_a_etat = wb_src[ONGLET_ENGAGEMENTS]["A1"].value == ENTETE_ETAT
+
     # Contrôle des en-têtes : la structure doit être identique au modèle
-    h_mod = [c.value for c in wb[ONGLET_ENGAGEMENTS][1]]
-    h_src = [c.value for c in wb_src[ONGLET_ENGAGEMENTS][1]]
+    h_mod = [c.value for c in wb[ONGLET_ENGAGEMENTS][1]][int(modele_a_etat):]
+    h_src = [c.value for c in wb_src[ONGLET_ENGAGEMENTS][1]][int(source_a_etat):]
     if h_mod[:39] != h_src[:39]:
         diff = [(i + 1, a, b) for i, (a, b) in enumerate(zip(h_mod, h_src)) if a != b]
-        sys.exit(f"Colonnes différentes entre modèle et source (A à AM) : {diff}")
+        sys.exit(f"Colonnes différentes entre modèle et source : {diff}")
 
     for nom in ONGLETS_SOURCES:
         idx = wb.sheetnames.index(nom)
         wb.remove(wb[nom])
         dst = wb.create_sheet(nom, idx)
-        copier_onglet(wb_src[nom], dst)
+        decalage = 1 if nom == ONGLET_ENGAGEMENTS and not source_a_etat else 0
+        copier_onglet(wb_src[nom], dst, decalage, entetes=[ENTETE_ETAT][:decalage])
+
+    # Les tableaux de bord du modèle lisent l'ancienne disposition : on décale
+    # leurs références d'une colonne (une seule fois, au passage à la colonne ÉTAT)
+    nb_refs = 0
+    if not modele_a_etat:
+        nb_refs = decaler_references_classeur(wb, ONGLET_ENGAGEMENTS, 1)
 
     ws = wb[ONGLET_ENGAGEMENTS]
-    fin = derniere_ligne(ws)
+    fin = derniere_ligne(ws, col=3)
     if fin > LIGNES_FORMULES_SUIVI:
         sys.exit(f"{fin} lignes : dépasse la plage de 'Données Suivi' "
                  f"({LIGNES_FORMULES_SUIVI}), à étendre.")
@@ -183,6 +247,8 @@ def main():
     if ancien:
         print(f"Tableau     : {ancien} -> {nouveau}")
     print(f"Volets figés: {ws.freeze_panes}")
+    if nb_refs:
+        print(f"Colonne ÉTAT: insérée en A, {nb_refs} formule(s)/nom(s) du modèle décalé(s)")
     if nb_filtres or nb_masquees:
         print(f"Filtres     : {nb_filtres} filtre(s) retiré(s), "
               f"{nb_masquees} ligne(s) réaffichée(s)")
